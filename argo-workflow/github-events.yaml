@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: github-events
+  namespace: argo-events
+spec:
+  github:
+    repo-push:
+      event: 
+        - push
+      webhook:
+        endpoint: /push
+        method: POST
+        port: "12000"
+      repositories:
+        - owner: caonguyen
+          name: flask_app_argocd
+      webhookSecret:
+        name: github-secret
+        key: secret
+      filter:
+        ref:
+          matchEquals: "refs/heads/master"

@@ -1,0 +1,100 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: kaniko-build-template
+  namespace: argo-events
+spec:
+  entrypoint: kaniko-build-flow
+  arguments:
+    parameters:
+      - name: registry-username
+      - name: image-name
+  volumeClaimTemplates:
+    - metadata:
+        name: kaniko-workspace
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+  templates:
+    - name: kaniko-build-flow
+      steps:
+        - - name: clone-repo
+            template: git-clone
+        - - name: read-version
+            template: get-version
+            arguments:
+              artifacts:
+                - name: repo
+                  from: "{{steps.clone-repo.outputs.artifacts.repo}}"
+        - - name: kaniko-build
+            template: kaniko
+            arguments:
+              parameters:
+                - name: image-tag
+                  value: "{{steps.read-version.outputs.result}}"
+                - name: registry-username
+                  value: "{{workflow.parameters.registry-username}}"
+                - name: image-name
+                  value: "{{workflow.parameters.image-name}}"
+
+    - name: git-clone
+      outputs:
+        artifacts:
+          - name: repo
+            path: /src
+      container:
+        image: alpine/git
+        command: ["sh", "-c"]
+        args:
+          - git clone https://github.com/{{workflow.parameters.registry-username}}/{{workflow.parameters.image-name}}.git /src
+        volumeMounts:
+          - name: kaniko-workspace
+            mountPath: /src
+
+    - name: get-version
+      inputs:
+        artifacts:
+          - name: repo
+            path: /src
+      script:
+        image: python:3.10
+        command: [python]
+        source: |
+          with open("/src/version.txt") as f:
+              print(f.read().strip())
+        outputs:
+          result:
+            valueFrom:
+              path: /tmp/version.txt
+
+    - name: kaniko
+      inputs:
+        parameters:
+          - name: image-tag
+          - name: registry-username
+          - name: image-name
+      container:
+        image: gcr.io/kaniko-project/executor:latest
+        command:
+          - /kaniko/executor
+        args:
+          - "--dockerfile=/src/Dockerfile"
+          - "--context=/src"
+          - "--destination=docker.io/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}:{{inputs.parameters.image-tag}}"
+          - "--verbosity=info"
+        volumeMounts:
+          - name: kaniko-workspace
+            mountPath: /src
+          - name: docker-config
+            mountPath: /kaniko/.docker
+
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: docker-config
+    - name: kaniko-workspace
+      persistentVolumeClaim:
+        claimName: kaniko-workspace
