@@ -10,16 +10,6 @@ spec:
       - name: registry-username
       - name: image-name
 
-  volumeClaimTemplates:
-    - metadata:
-        name: kaniko-workspace
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 1Gi
-        storageClassName: gp2
-
   templates:
     - name: kaniko-build-flow
       inputs:
@@ -111,3 +101,6 @@ spec:
     - name: docker-config
       secret:
         secretName: docker-config
+    - name: kaniko-workspace
+      persistentVolumeClaim:
+        claimName: kaniko-workspace

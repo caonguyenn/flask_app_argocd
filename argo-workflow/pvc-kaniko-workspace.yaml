@@ -10,3 +10,14 @@ spec:
     requests:
       storage: 1Gi
   storageClassName: gp2
+
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp2
+provisioner: ebs.csi.eks.amazonaws.com
+parameters:
+  type: gp2
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
