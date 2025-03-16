@@ -9,6 +9,7 @@ spec:
     parameters:
       - name: registry-username
       - name: image-name
+
   volumeClaimTemplates:
     - metadata:
         name: kaniko-workspace
@@ -17,12 +18,23 @@ spec:
         resources:
           requests:
             storage: 1Gi
+        storageClassName: gp2
 
   templates:
     - name: kaniko-build-flow
+      inputs:
+        parameters:
+          - name: registry-username
+          - name: image-name
       steps:
         - - name: clone-repo
             template: git-clone
+            arguments:
+              parameters:
+                - name: registry-username
+                  value: "{{inputs.parameters.registry-username}}"
+                - name: image-name
+                  value: "{{inputs.parameters.image-name}}"
         - - name: read-version
             template: get-version
             arguments:
@@ -36,11 +48,15 @@ spec:
                 - name: image-tag
                   value: "{{steps.read-version.outputs.result}}"
                 - name: registry-username
-                  value: "{{workflow.parameters.registry-username}}"
+                  value: "{{inputs.parameters.registry-username}}"
                 - name: image-name
-                  value: "{{workflow.parameters.image-name}}"
+                  value: "{{inputs.parameters.image-name}}"
 
     - name: git-clone
+      inputs:
+        parameters:
+          - name: registry-username
+          - name: image-name
       outputs:
         artifacts:
           - name: repo
@@ -49,7 +65,7 @@ spec:
         image: alpine/git
         command: ["sh", "-c"]
         args:
-          - git clone https://github.com/{{workflow.parameters.registry-username}}/{{workflow.parameters.image-name}}.git /src
+          - git clone https://github.com/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}.git /src
         volumeMounts:
           - name: kaniko-workspace
             mountPath: /src
@@ -95,6 +111,3 @@ spec:
     - name: docker-config
       secret:
         secretName: docker-config
-    - name: kaniko-workspace
-      persistentVolumeClaim:
-        claimName: kaniko-workspace
