@@ -9,7 +9,16 @@ spec:
     parameters:
       - name: registry-username
       - name: image-name
-
+  volumes:
+    - name: docker-config
+      secret:
+        secretName: docker-config
+    - name: github-config
+      secret:
+        secretName: github-config
+    - name: kaniko-workspace
+      persistentVolumeClaim:
+        claimName: kaniko-workspace
   templates:
     - name: kaniko-build-flow
       inputs:
@@ -50,27 +59,27 @@ spec:
       outputs:
         artifacts:
           - name: repo
-            path: /src
+            path: /mnt
       container:
-        image: alpine/git
-        command: ["sh", "-c"]
-        args:
-          - git clone https://github.com/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}.git /src
+        image: alpine/git:latest
+        command: ["git clone https://github.com/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}.git /mnt/app"]
         volumeMounts:
           - name: kaniko-workspace
-            mountPath: /src
+            mountPath: /mnt
+          - name: github-config
+            mountPath: /root/.netrc
 
     - name: get-version
       inputs:
         artifacts:
           - name: repo
-            path: /src
+            path: /mnt
       script:
         image: python:3.10
-        command: [python]
+        command: [python3]
         source: |
-          with open("/src/version.txt") as f:
-              print(f.read().strip())
+          with open("/usr/app/version.txt") as f_in, open("/tmp/version.txt", "w") as f_out:
+              f_out.write(f_in.read().strip())
         outputs:
           result:
             valueFrom:
@@ -87,20 +96,10 @@ spec:
         command:
           - /kaniko/executor
         args:
-          - "--dockerfile=/src/Dockerfile"
-          - "--context=/src"
+          - "--dockerfile=/mnt/app/Dockerfile"
+          - "--context=/mnt/app"
           - "--destination=docker.io/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}:{{inputs.parameters.image-tag}}"
           - "--verbosity=info"
         volumeMounts:
-          - name: kaniko-workspace
-            mountPath: /src
           - name: docker-config
             mountPath: /kaniko/.docker
-
-  volumes:
-    - name: docker-config
-      secret:
-        secretName: docker-config
-    - name: kaniko-workspace
-      persistentVolumeClaim:
-        claimName: kaniko-workspace

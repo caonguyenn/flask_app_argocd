@@ -1,6 +1,5 @@
 # flask_app_argocd
 
-
 # Install argo tool
 # Detect OS
 ARGO_OS="darwin"
@@ -41,6 +40,9 @@ kubectl apply -n argo-events -f https://raw.githubusercontent.com/argoproj/argo-
 
 # Create docker config secret
 kubectl create secret generic docker-config --from-file=config.json=$HOME/.docker/config.json
+
+# Create .netrc secret
+kubectl create secret generic github-config --from-file=config.json=$HOME/.netrc
 
 # Create github secret
 kubectl create secret generic github-secret \
