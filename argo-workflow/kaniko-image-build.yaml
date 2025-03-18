@@ -5,6 +5,7 @@ metadata:
   namespace: argo-events
 spec:
   entrypoint: kaniko-build-flow
+  serviceAccountName: argo-workflow
   arguments:
     parameters:
       - name: registry-username
@@ -13,12 +14,9 @@ spec:
     - name: docker-config
       secret:
         secretName: docker-config
-    - name: github-config
-      secret:
-        secretName: github-config
-    - name: kaniko-workspace
+    - name: pvc-volume
       persistentVolumeClaim:
-        claimName: kaniko-workspace
+        claimName: kaniko-workspaces
   templates:
     - name: kaniko-build-flow
       inputs:
@@ -59,26 +57,31 @@ spec:
       outputs:
         artifacts:
           - name: repo
-            path: /mnt
+            path: /mnt/{{workflow.uid}}/app
       container:
-        image: alpine/git:latest
-        command: ["git clone https://github.com/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}.git /mnt/app"]
+        image: ubuntu:latest
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update && apt-get install -y git
+            rm -rf /mnt/{{workflow.uid}}/app
+            mkdir -p /mnt/{{workflow.uid}}/app
+            git clone https://github.com/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}.git /mnt/{{workflow.uid}}/app
         volumeMounts:
-          - name: kaniko-workspace
+          - name: pvc-volume
             mountPath: /mnt
-          - name: github-config
-            mountPath: /root/.netrc
 
     - name: get-version
       inputs:
         artifacts:
           - name: repo
-            path: /mnt
+            path: /mnt/{{workflow.uid}}/app
       script:
         image: python:3.10
         command: [python3]
         source: |
-          with open("/usr/app/version.txt") as f_in, open("/tmp/version.txt", "w") as f_out:
+          with open("/mnt/{{workflow.uid}}/app/version.txt") as f_in, open("/tmp/version.txt", "w") as f_out:
               f_out.write(f_in.read().strip())
         outputs:
           result:
@@ -96,10 +99,12 @@ spec:
         command:
           - /kaniko/executor
         args:
-          - "--dockerfile=/mnt/app/Dockerfile"
-          - "--context=/mnt/app"
+          - "--dockerfile=/mnt/{{workflow.uid}}/app/Dockerfile"
+          - "--context=/mnt/{{workflow.uid}}/app"
           - "--destination=docker.io/{{inputs.parameters.registry-username}}/{{inputs.parameters.image-name}}:{{inputs.parameters.image-tag}}"
           - "--verbosity=info"
         volumeMounts:
           - name: docker-config
             mountPath: /kaniko/.docker
+          - name: pvc-volume
+            mountPath: /mnt
